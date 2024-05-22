@@ -1,3 +1,3 @@
 {
-  "assets": ["cube", "thrower", "particles", "basic-titles", "basic-background", "wobbly-sphere", "flow-field-particles", "imported-asset", "sphere", "environment","the-spirit","kinetic-typo","grid-instances","instances"]
+  "assets": ["cube", "particles", "basic-titles", "basic-background", "wobbly-sphere", "flow-field-particles", "imported-asset", "sphere", "environment","the-spirit","kinetic-typo","grid-instances","instances","thrower","model"]
 }

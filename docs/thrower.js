@@ -1,4 +1,4 @@
-import { B as BufferGeometry, a as BufferAttribute, L as LineSegments, b as LineBasicMaterial, c as BoxGeometry, S as SphereGeometry, I as IcosahedronGeometry, V as Vector3, Q as Quaternion, E as Euler, d as Scene, M as Mesh, e as Matrix4, f as ShadowMaterial, g as InstancedMesh, h as MeshPhysicalMaterial, D as DynamicDrawUsage, i as MathUtils } from "./three.js";
+import { B as BufferGeometry, a as BufferAttribute, L as LineSegments, b as LineBasicMaterial, c as BoxGeometry, S as SphereGeometry, I as IcosahedronGeometry, V as Vector3, Q as Quaternion, E as Euler, M as Mesh, d as MeshPhysicalMaterial, e as MeshBasicMaterial, f as Scene, g as Material, h as Matrix4, i as InstancedMesh, D as DynamicDrawUsage, j as MathUtils } from "./three.js";
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) {
@@ -56,6 +56,10 @@ class Helper {
         loadResourceAsBase64: async (id) => "",
         loadGLTF: (id, onLoad) => {
         },
+        loadTexture: (id, onLoad) => {
+        },
+        loadRGBE: (id, onLoad) => {
+        },
         getResourceURL: (id) => "",
         forceRefresh: () => {
         },
@@ -72,6 +76,8 @@ class Helper {
         getThreeCamera: () => {
         },
         getThreeScene: () => {
+        },
+        getThreeOrbitControls: () => {
         },
         getRapierWorld: () => {
         },
@@ -111,7 +117,6 @@ class Helper {
     }
   }
 }
-const GENERAL_PROPERTY = true;
 const ENTITY_PROPERTY = false;
 var AssetPropertyId = /* @__PURE__ */ ((AssetPropertyId2) => {
   AssetPropertyId2["POSITION"] = "position";
@@ -349,6 +354,16 @@ class Asset {
       general,
       keys,
       icons
+    };
+    return this.addProperty(general, property);
+  }
+  addPropertyDropdown(general, id, defaultValue, keys) {
+    const property = {
+      id,
+      type: "dropdown",
+      defaultValue,
+      general,
+      keys
     };
     return this.addProperty(general, property);
   }
@@ -638,6 +653,14 @@ class DigoAssetThree extends Asset {
   loadGLTF(id, onLoad) {
     var _a;
     (_a = Helper.getGlobal()) == null ? void 0 : _a.loadGLTF(id, onLoad);
+  }
+  loadTexture(id, onLoad) {
+    var _a;
+    (_a = Helper.getGlobal()) == null ? void 0 : _a.loadTexture(id, onLoad);
+  }
+  loadRGBE(id, onLoad) {
+    var _a;
+    (_a = Helper.getGlobal()) == null ? void 0 : _a.loadRGBE(id, onLoad);
   }
   updateMaterial(mesh, object, field, property, value) {
     var _a;
@@ -5794,14 +5817,13 @@ var Bg = Object.freeze({ __proto__: null, version: Cg, Vector3: GA, VectorOps: w
 class RapierUtils {
   constructor(scene, world, rapier) {
     this.mesh = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ color: 16777215, vertexColors: true }));
-    this.enabled = true;
     this.world = world;
     this.rapier = rapier;
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
   }
-  updateDebug() {
-    if (this.enabled) {
+  updateDebug(debug) {
+    if (debug) {
       const { vertices, colors } = this.world.debugRender();
       this.mesh.geometry.setAttribute("position", new BufferAttribute(vertices, 3));
       this.mesh.geometry.setAttribute("color", new BufferAttribute(colors, 4));
@@ -5877,12 +5899,24 @@ class RapierUtils {
       this.world.removeCollider(meshPhysics.collider, false);
     }
   }
-  addMeshPhysics(data, fixed) {
-    data.colliderDesc = this.getColliderDesc(data.mesh.geometry);
-    data.rigidBody = this.createRigidBody(fixed, data.mesh.position, data.mesh.quaternion);
-    if (data.colliderDesc) {
-      data.collider = this.createCollider(data.colliderDesc, data.rigidBody);
+  addMeshPhysics(mesh, fixed) {
+    const scaledMeshGeometry = new BufferGeometry();
+    scaledMeshGeometry.copy(mesh.geometry);
+    const scale = new Vector3();
+    mesh.getWorldScale(scale);
+    scaledMeshGeometry.scale(scale.x, scale.y, scale.z);
+    const colliderDesc = this.getColliderDesc(scaledMeshGeometry);
+    const rigidBody = this.createRigidBody(fixed, mesh.position, mesh.quaternion);
+    let collider;
+    if (colliderDesc) {
+      collider = this.createCollider(colliderDesc, rigidBody);
     }
+    const meshPhysics = {
+      colliderDesc,
+      rigidBody,
+      collider
+    };
+    return meshPhysics;
   }
   setRigidBodyRotation(rigidBody, rotation) {
     const quaternion = new Quaternion().setFromEuler(new Euler(rotation.x, rotation.y, rotation.z));
@@ -6002,6 +6036,10 @@ const labels = {
     en: "Mesh",
     es: "Objeto"
   },
+  meshType: {
+    en: "Type",
+    es: "Tipo"
+  },
   physics: {
     en: "Physics",
     es: "Físicas"
@@ -6039,12 +6077,23 @@ const labels = {
     es: "Aleatoriedad"
   }
 };
-let WORLD;
 let RAPIER_UTILS;
+const meshTypeOptions = {
+  Sphere: new Mesh(
+    new SphereGeometry(0.1, 32, 32),
+    new MeshPhysicalMaterial({ name: `${Math.random()}` })
+  ),
+  Cube: new Mesh(
+    new BoxGeometry(0.05, 0.05, 0.05),
+    new MeshPhysicalMaterial({ name: `${Math.random()}` })
+  ),
+  Custom: new Mesh(new SphereGeometry(), new MeshBasicMaterial())
+};
+const MESH_TYPE_KEYS = Object.keys(meshTypeOptions);
 const DEFAULTS = {
-  gravity: new Vector3(0, -0.8, 0),
-  floor: true,
   maxCount: 1e3,
+  meshType: MESH_TYPE_KEYS[0],
+  customMaterial: false,
   material: { digoType: "physical", color: 16777215 },
   objectId: "",
   spawnPosition: new Vector3(0, 2, 0),
@@ -6068,37 +6117,15 @@ const DEFAULTS = {
   angularImpulse: new Vector3(0, 0, 0)
 };
 class GeneralData extends AssetGeneralData {
-  constructor() {
-    super(...arguments);
-    this.properties = {
-      gravity: DEFAULTS.gravity,
-      floor: DEFAULTS.floor
-    };
-    this.floor = {
-      mesh: new Mesh(
-        new BoxGeometry(10, 5, 10),
-        new ShadowMaterial({ color: 4473924 })
-      ),
-      colliderDesc: null
-    };
-  }
-  setFloor() {
-    this.floor.mesh.position.y = -2.5;
-    this.floor.mesh.receiveShadow = true;
-    RAPIER_UTILS.addMeshPhysics(this.floor, true);
-    this.floor.collider.setFriction(0.1);
-  }
-  destroyFloor() {
-    RAPIER_UTILS.removeMeshPhysics(this.floor);
-    this.container.remove(this.floor);
-  }
 }
 class EntityData extends AssetEntityData {
   constructor() {
     super();
     this.properties = {
-      material: { digoType: "physical", color: 16777215 },
+      meshType: DEFAULTS.meshType,
       objectId: DEFAULTS.objectId,
+      material: { digoType: "physical", color: 16777215 },
+      customMaterial: DEFAULTS.customMaterial,
       spawnPosition: DEFAULTS.spawnPosition,
       spawnRandomness: DEFAULTS.spawnRandomness,
       count: DEFAULTS.count,
@@ -6123,6 +6150,8 @@ class EntityData extends AssetEntityData {
       new MeshPhysicalMaterial({ name: `${Math.random()}` }),
       DEFAULTS.maxCount
     );
+    this.originalMaterial = new Material();
+    this.material = new MeshPhysicalMaterial({ name: `${Math.random()}` });
     this.instances = [];
     this.throwerProperties = {
       previousTrigger: 0,
@@ -6161,6 +6190,9 @@ class EntityData extends AssetEntityData {
     this.instancedMesh.receiveShadow = true;
     this.instancedMesh.geometry.computeBoundingSphere();
     this.instancedMesh.geometry.computeBoundingBox();
+  }
+  setCustomMaterial(customMaterial) {
+    this.instancedMesh.material = customMaterial ? this.material : this.originalMaterial;
   }
   throwInstance(index) {
     const instance = this.instances[index];
@@ -6259,7 +6291,6 @@ class Thrower extends DigoAssetThree {
     const rapierWorld = (_b = Helper.getGlobal()) == null ? void 0 : _b.getRapierWorld();
     const rapierInstance = (_c = Helper.getGlobal()) == null ? void 0 : _c.getRapierInstance();
     const rapierUtils = new RapierUtils(scene, rapierWorld, rapierInstance);
-    WORLD = rapierWorld;
     RAPIER_UTILS = rapierUtils;
     this.setLabels(labels);
     const generalData = new GeneralData();
@@ -6279,34 +6310,10 @@ class Thrower extends DigoAssetThree {
     this.getContainer().add(component);
   }
   addProperties() {
-    this.addGeneralProperties();
     this.addMeshProperties();
     this.addThrowerProperties();
     this.addPhysicsProperties();
     this.addAttractorProperties();
-  }
-  addGeneralProperties() {
-    this.addPropertyBoolean(GENERAL_PROPERTY, "debug", true).setter((data, value) => {
-      if (RAPIER_UTILS) {
-        RAPIER_UTILS.enabled = value;
-      }
-    }).getter((data) => {
-      return RAPIER_UTILS.enabled ?? false;
-    });
-    this.addPropertyBoolean(GENERAL_PROPERTY, "floor", DEFAULTS.floor).setter((data, value) => {
-      data.properties.floor = value;
-      if (value) {
-        data.setFloor();
-      } else {
-        data.destroyFloor();
-      }
-    }).getter((data) => {
-      return data.properties.floor;
-    });
-    this.addPropertyXYZ(GENERAL_PROPERTY, "gravity", false, DEFAULTS.gravity.x, DEFAULTS.gravity.y, DEFAULTS.gravity.z).setter((data, value) => {
-      data.properties.gravity = value;
-      WORLD.gravity = value;
-    }).getter((data) => data.properties.gravity);
   }
   addAttractorProperties() {
     this.addPropertyXYZ(ENTITY_PROPERTY, "attractorPosition", false, DEFAULTS.attractorPosition.x, DEFAULTS.attractorPosition.y, DEFAULTS.attractorPosition.z).group("attractor").setter((data, value) => {
@@ -6346,10 +6353,19 @@ class Thrower extends DigoAssetThree {
     }).getter((data) => data.properties.angularImpulse);
   }
   addMeshProperties() {
+    this.addPropertyDropdown(ENTITY_PROPERTY, "meshType", DEFAULTS.meshType, MESH_TYPE_KEYS).group("mesh").setter((data, value) => {
+      data.properties.meshType = value;
+      this.updateGeometry(data);
+    }).getter((data) => data.properties.meshType);
     this.addPropertyObject3D(ENTITY_PROPERTY, "geometry").group("mesh").setter((data, value) => {
-      this.updateGeometry(data, value);
+      data.properties.objectId = value;
+      this.updateGeometry(data);
     }).getter((data) => data.properties.objectId);
-    this.addPropertyMaterial(ENTITY_PROPERTY, "material", DEFAULTS.material).group("mesh").setter((data, value, property) => this.updateMaterial(data.instancedMesh, data.properties, "material", property, value)).getter((data) => data.properties.material);
+    this.addPropertyBoolean(ENTITY_PROPERTY, "customMaterial", DEFAULTS.customMaterial).group("mesh").setter((data, value) => {
+      data.properties.customMaterial = value;
+      data.setCustomMaterial(value);
+    }).getter((data) => data.properties.customMaterial);
+    this.addPropertyMaterial(ENTITY_PROPERTY, "material", DEFAULTS.material).group("mesh").setter((data, value, property) => this.updateMaterial(data, data.properties, "material", property, value)).getter((data) => data.properties.material);
   }
   addPhysicsProperties() {
     this.addPropertyNumber(ENTITY_PROPERTY, "size", 0.01, 100, 2, 0.01, DEFAULTS.size).group("physics").setter((data, value) => {
@@ -6380,28 +6396,44 @@ class Thrower extends DigoAssetThree {
       data.properties.restitution = value;
     }).getter((data) => data.properties.restitution);
   }
-  updateGeometry(data, id) {
-    this.loadGLTF(id, (gltf) => {
-      const geometries = [];
-      gltf.scene.traverse((node) => {
-        if (node instanceof Mesh) {
-          const mesh = node;
-          geometries.push(mesh.geometry);
-        }
-      });
-      const mergedGeometry = mergeGeometries(geometries);
-      mergedGeometry.computeVertexNormals();
-      mergedGeometry.computeBoundingSphere();
-      mergedGeometry.computeTangents();
-      mergedGeometry.computeBoundingBox();
-      const size = mergedGeometry.boundingBox.getSize(new Vector3());
-      const scaleFactor = 1 / Math.max(size.x, size.y, size.z) / 10;
-      const scaleMatrix = new Matrix4().makeScale(scaleFactor, scaleFactor, scaleFactor);
-      mergedGeometry.applyMatrix4(scaleMatrix);
-      mergedGeometry.scale(data.properties.size, data.properties.size, data.properties.size);
-      data.instancedMesh.geometry = mergedGeometry;
-    });
-    data.properties.objectId = id;
+  updateGeometry(entityData) {
+    switch (entityData.properties.meshType) {
+      case MESH_TYPE_KEYS[2]:
+        this.loadGLTF(entityData.properties.objectId, (gltf) => {
+          const geometries = [];
+          let material = new Material();
+          gltf.scene.traverse((node) => {
+            if (node instanceof Mesh) {
+              const mesh = node;
+              geometries.push(mesh.geometry);
+              material = node.material;
+            }
+          });
+          const mergedGeometry = mergeGeometries(geometries);
+          mergedGeometry.computeVertexNormals();
+          mergedGeometry.computeBoundingSphere();
+          mergedGeometry.computeTangents();
+          mergedGeometry.computeBoundingBox();
+          const size = mergedGeometry.boundingBox.getSize(new Vector3());
+          const scaleFactor = 1 / Math.max(size.x, size.y, size.z) / 10;
+          const scaleMatrix = new Matrix4().makeScale(scaleFactor, scaleFactor, scaleFactor);
+          mergedGeometry.applyMatrix4(scaleMatrix);
+          mergedGeometry.scale(entityData.properties.size, entityData.properties.size, entityData.properties.size);
+          entityData.instancedMesh.geometry = mergedGeometry;
+          entityData.originalMaterial = material;
+          entityData.setCustomMaterial(entityData.properties.customMaterial);
+        });
+        break;
+      default:
+        meshTypeOptions[entityData.properties.meshType].geometry.computeVertexNormals();
+        meshTypeOptions[entityData.properties.meshType].geometry.computeBoundingSphere();
+        meshTypeOptions[entityData.properties.meshType].geometry.computeTangents();
+        meshTypeOptions[entityData.properties.meshType].geometry.computeBoundingBox();
+        entityData.instancedMesh.geometry = meshTypeOptions[entityData.properties.meshType].geometry;
+        entityData.originalMaterial = meshTypeOptions[entityData.properties.meshType].material;
+        entityData.setCustomMaterial(entityData.properties.customMaterial);
+        break;
+    }
   }
   tick(parameters) {
     this.deltaTime = parameters.elapsedTime - this.previousTime;
@@ -6445,9 +6477,6 @@ class Thrower extends DigoAssetThree {
       }
     );
     super.tick(parameters);
-    if (RAPIER_UTILS) {
-      RAPIER_UTILS.updateDebug();
-    }
   }
 }
 const digoAssetData = {

@@ -1,4 +1,4 @@
-import { B as BufferGeometry, a as BufferAttribute, L as LineSegments, b as LineBasicMaterial, c as BoxGeometry, S as SphereGeometry, I as IcosahedronGeometry, V as Vector3, Q as Quaternion, E as Euler, d as Scene, M as Mesh, e as Matrix4 } from "./three.js";
+import { O as Object3D, M as MeshPhysicalMaterial, S as SkeletonHelper, B as Box3, V as Vector3, A as AnimationMixer, a as Mesh, Q as Quaternion, L as LineSegments, b as BufferGeometry, c as LineBasicMaterial, d as BufferAttribute, e as BoxGeometry, f as SphereGeometry, I as IcosahedronGeometry, E as Euler, g as Scene } from "./three.js";
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) {
@@ -56,6 +56,10 @@ class Helper {
         loadResourceAsBase64: async (id) => "",
         loadGLTF: (id, onLoad) => {
         },
+        loadTexture: (id, onLoad) => {
+        },
+        loadRGBE: (id, onLoad) => {
+        },
         getResourceURL: (id) => "",
         forceRefresh: () => {
         },
@@ -72,6 +76,8 @@ class Helper {
         getThreeCamera: () => {
         },
         getThreeScene: () => {
+        },
+        getThreeOrbitControls: () => {
         },
         getRapierWorld: () => {
         },
@@ -111,7 +117,6 @@ class Helper {
     }
   }
 }
-const GENERAL_PROPERTY = true;
 const ENTITY_PROPERTY = false;
 var AssetPropertyId = /* @__PURE__ */ ((AssetPropertyId2) => {
   AssetPropertyId2["POSITION"] = "position";
@@ -349,6 +354,16 @@ class Asset {
       general,
       keys,
       icons
+    };
+    return this.addProperty(general, property);
+  }
+  addPropertyDropdown(general, id, defaultValue, keys) {
+    const property = {
+      id,
+      type: "dropdown",
+      defaultValue,
+      general,
+      keys
     };
     return this.addProperty(general, property);
   }
@@ -639,6 +654,14 @@ class DigoAssetThree extends Asset {
     var _a;
     (_a = Helper.getGlobal()) == null ? void 0 : _a.loadGLTF(id, onLoad);
   }
+  loadTexture(id, onLoad) {
+    var _a;
+    (_a = Helper.getGlobal()) == null ? void 0 : _a.loadTexture(id, onLoad);
+  }
+  loadRGBE(id, onLoad) {
+    var _a;
+    (_a = Helper.getGlobal()) == null ? void 0 : _a.loadRGBE(id, onLoad);
+  }
   updateMaterial(mesh, object, field, property, value) {
     var _a;
     (_a = Helper.getGlobal()) == null ? void 0 : _a.updateMaterial(mesh, property, value, object[field]);
@@ -658,160 +681,250 @@ class DigoAssetThree extends Asset {
   tick(parameters) {
   }
 }
-function mergeGeometries(geometries, useGroups = false) {
-  const isIndexed = geometries[0].index !== null;
-  const attributesUsed = new Set(Object.keys(geometries[0].attributes));
-  const morphAttributesUsed = new Set(Object.keys(geometries[0].morphAttributes));
-  const attributes = {};
-  const morphAttributes = {};
-  const morphTargetsRelative = geometries[0].morphTargetsRelative;
-  const mergedGeometry = new BufferGeometry();
-  let offset = 0;
-  for (let i2 = 0; i2 < geometries.length; ++i2) {
-    const geometry = geometries[i2];
-    let attributesCount = 0;
-    if (isIndexed !== (geometry.index !== null)) {
-      console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i2 + ". All geometries must have compatible attributes; make sure index attribute exists among all geometries, or in none of them.");
-      return null;
-    }
-    for (const name in geometry.attributes) {
-      if (!attributesUsed.has(name)) {
-        console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i2 + '. All geometries must have compatible attributes; make sure "' + name + '" attribute exists among all geometries, or in none of them.');
-        return null;
-      }
-      if (attributes[name] === void 0)
-        attributes[name] = [];
-      attributes[name].push(geometry.attributes[name]);
-      attributesCount++;
-    }
-    if (attributesCount !== attributesUsed.size) {
-      console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i2 + ". Make sure all geometries have the same number of attributes.");
-      return null;
-    }
-    if (morphTargetsRelative !== geometry.morphTargetsRelative) {
-      console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i2 + ". .morphTargetsRelative must be consistent throughout all geometries.");
-      return null;
-    }
-    for (const name in geometry.morphAttributes) {
-      if (!morphAttributesUsed.has(name)) {
-        console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i2 + ".  .morphAttributes must be consistent throughout all geometries.");
-        return null;
-      }
-      if (morphAttributes[name] === void 0)
-        morphAttributes[name] = [];
-      morphAttributes[name].push(geometry.morphAttributes[name]);
-    }
-    if (useGroups) {
-      let count;
-      if (isIndexed) {
-        count = geometry.index.count;
-      } else if (geometry.attributes.position !== void 0) {
-        count = geometry.attributes.position.count;
-      } else {
-        console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed with geometry at index " + i2 + ". The geometry must have either an index or a position attribute");
-        return null;
-      }
-      mergedGeometry.addGroup(offset, count, i2);
-      offset += count;
-    }
+let RAPIER_UTILS$1;
+class ImportedModel extends Object3D {
+  constructor(rapierUtils) {
+    RAPIER_UTILS$1 = rapierUtils;
+    super();
+    this.material = new MeshPhysicalMaterial({ name: `${Math.random()}` });
   }
-  if (isIndexed) {
-    let indexOffset = 0;
-    const mergedIndex = [];
-    for (let i2 = 0; i2 < geometries.length; ++i2) {
-      const index = geometries[i2].index;
-      for (let j2 = 0; j2 < index.count; ++j2) {
-        mergedIndex.push(index.getX(j2) + indexOffset);
-      }
-      indexOffset += geometries[i2].attributes.position.count;
-    }
-    mergedGeometry.setIndex(mergedIndex);
+  setModel(gltf) {
+    this.removePreviousModel();
+    const scene = this.getScene(gltf);
+    const animationManager = this.getAnimations(gltf.animations, scene);
+    const slots = this.getSlots(scene);
+    this.model = { scene, animationManager, slots };
+    this.add(this.model.scene);
+    this.startAnimations();
+    this.skeleton = new SkeletonHelper(this.model.scene);
+    this.add(this.skeleton);
   }
-  for (const name in attributes) {
-    const mergedAttribute = mergeAttributes(attributes[name]);
-    if (!mergedAttribute) {
-      console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed while trying to merge the " + name + " attribute.");
-      return null;
-    }
-    mergedGeometry.setAttribute(name, mergedAttribute);
+  showSkeleton(show) {
+    this.skeleton.visible = show;
   }
-  for (const name in morphAttributes) {
-    const numMorphTargets = morphAttributes[name][0].length;
-    if (numMorphTargets === 0)
-      break;
-    mergedGeometry.morphAttributes = mergedGeometry.morphAttributes || {};
-    mergedGeometry.morphAttributes[name] = [];
-    for (let i2 = 0; i2 < numMorphTargets; ++i2) {
-      const morphAttributesToMerge = [];
-      for (let j2 = 0; j2 < morphAttributes[name].length; ++j2) {
-        morphAttributesToMerge.push(morphAttributes[name][j2][i2]);
-      }
-      const mergedMorphAttribute = mergeAttributes(morphAttributesToMerge);
-      if (!mergedMorphAttribute) {
-        console.error("THREE.BufferGeometryUtils: .mergeGeometries() failed while trying to merge the " + name + " morphAttribute.");
-        return null;
-      }
-      mergedGeometry.morphAttributes[name].push(mergedMorphAttribute);
-    }
+  getScene(gltf) {
+    const scene = gltf.scene;
+    const desiredSize = 1;
+    const box = new Box3().setFromObject(scene);
+    const size = box.getSize(new Vector3()).length();
+    const scaleFactor = desiredSize / size;
+    scene.scale.set(scaleFactor, scaleFactor, scaleFactor);
+    return scene;
   }
-  return mergedGeometry;
-}
-function mergeAttributes(attributes) {
-  let TypedArray;
-  let itemSize;
-  let normalized;
-  let gpuType = -1;
-  let arrayLength = 0;
-  for (let i2 = 0; i2 < attributes.length; ++i2) {
-    const attribute = attributes[i2];
-    if (TypedArray === void 0)
-      TypedArray = attribute.array.constructor;
-    if (TypedArray !== attribute.array.constructor) {
-      console.error("THREE.BufferGeometryUtils: .mergeAttributes() failed. BufferAttribute.array must be of consistent array types across matching attributes.");
-      return null;
-    }
-    if (itemSize === void 0)
-      itemSize = attribute.itemSize;
-    if (itemSize !== attribute.itemSize) {
-      console.error("THREE.BufferGeometryUtils: .mergeAttributes() failed. BufferAttribute.itemSize must be consistent across matching attributes.");
-      return null;
-    }
-    if (normalized === void 0)
-      normalized = attribute.normalized;
-    if (normalized !== attribute.normalized) {
-      console.error("THREE.BufferGeometryUtils: .mergeAttributes() failed. BufferAttribute.normalized must be consistent across matching attributes.");
-      return null;
-    }
-    if (gpuType === -1)
-      gpuType = attribute.gpuType;
-    if (gpuType !== attribute.gpuType) {
-      console.error("THREE.BufferGeometryUtils: .mergeAttributes() failed. BufferAttribute.gpuType must be consistent across matching attributes.");
-      return null;
-    }
-    arrayLength += attribute.count * itemSize;
+  getAnimations(animationClips, scene) {
+    const mixer = new AnimationMixer(scene);
+    const animations = [];
+    animationClips.forEach((clip) => {
+      const animation = {
+        clip,
+        action: mixer.clipAction(clip)
+      };
+      animations.push(animation);
+    });
+    return {
+      mixer,
+      animations
+    };
   }
-  const array = new TypedArray(arrayLength);
-  const result = new BufferAttribute(array, itemSize, normalized);
-  let offset = 0;
-  for (let i2 = 0; i2 < attributes.length; ++i2) {
-    const attribute = attributes[i2];
-    if (attribute.isInterleavedBufferAttribute) {
-      const tupleOffset = offset / itemSize;
-      for (let j2 = 0, l2 = attribute.count; j2 < l2; j2++) {
-        for (let c2 = 0; c2 < itemSize; c2++) {
-          const value = attribute.getComponent(j2, c2);
-          result.setComponent(j2 + tupleOffset, c2, value);
+  startAnimations() {
+    var _a, _b;
+    (_b = (_a = this.model) == null ? void 0 : _a.animationManager) == null ? void 0 : _b.animations.forEach((animation) => {
+      animation.action.play();
+      animation.action.setEffectiveWeight(0);
+    });
+  }
+  getSlots(scene) {
+    const slots = [];
+    scene.traverse((node) => {
+      if (node instanceof Mesh) {
+        const morphTargets = [];
+        if (node.morphTargetDictionary) {
+          Object.entries(node.morphTargetDictionary).forEach(([name, index], i2) => {
+            const influence = node.morphTargetInfluences[index];
+            morphTargets.push({ name, index, influence });
+          });
         }
+        const meshPhysics = RAPIER_UTILS$1.addMeshPhysics(node, true);
+        const originalMaterial = node.material;
+        node.castShadow = true;
+        node.receiveShadow = true;
+        slots.push({ mesh: node, meshPhysics, originalMaterial, morphTargets });
       }
-    } else {
-      array.set(attribute.array, offset);
+    });
+    return slots;
+  }
+  removePreviousModel() {
+    var _a, _b;
+    (_a = this.model) == null ? void 0 : _a.slots.forEach((slot) => {
+      if (slot.meshPhysics) {
+        RAPIER_UTILS$1.removeMeshPhysics(slot.meshPhysics);
+      }
+    });
+    if ((_b = this.model) == null ? void 0 : _b.scene)
+      this.remove(this.model.scene);
+    if (this.skeleton) {
+      this.remove(this.skeleton);
     }
-    offset += attribute.count * itemSize;
   }
-  if (gpuType !== void 0) {
-    result.gpuType = gpuType;
+  setVisibility(visible) {
+    var _a;
+    (_a = this.model) == null ? void 0 : _a.slots.forEach((slot) => {
+      slot.mesh.visible = visible;
+    });
   }
-  return result;
+  setorigin(origin) {
+    var _a;
+    if ((_a = this.model) == null ? void 0 : _a.scene) {
+      this.model.scene.position.copy(origin);
+    }
+  }
+  setCustomMaterial(customMaterial) {
+    var _a;
+    (_a = this.model) == null ? void 0 : _a.slots.forEach((slot) => {
+      if (slot.mesh) {
+        slot.mesh.material = customMaterial ? this.material : slot.originalMaterial;
+      }
+    });
+  }
+  setPhysics(active) {
+    var _a;
+    (_a = this.model) == null ? void 0 : _a.slots.forEach((slot) => {
+      if (slot.meshPhysics) {
+        RAPIER_UTILS$1.removeMeshPhysics(slot.meshPhysics);
+        slot.meshPhysics = void 0;
+      }
+      if (active) {
+        slot.meshPhysics = RAPIER_UTILS$1.addMeshPhysics(slot.mesh, true);
+      }
+    });
+  }
+  setPhysicsRestitution(restitution) {
+    var _a;
+    (_a = this.model) == null ? void 0 : _a.slots.forEach((slot) => {
+      if (slot.meshPhysics) {
+        const collider = slot.meshPhysics.collider;
+        collider.setRestitution(restitution);
+      }
+    });
+  }
+  setPhysicsFriction(friction) {
+    var _a;
+    (_a = this.model) == null ? void 0 : _a.slots.forEach((slot) => {
+      if (slot.meshPhysics) {
+        const collider = slot.meshPhysics.collider;
+        collider.setFriction(friction);
+      }
+    });
+  }
+  updateTransformPhysics(updateScale) {
+    var _a, _b;
+    if (updateScale) {
+      (_a = this.model) == null ? void 0 : _a.slots.forEach((slot) => {
+        if (slot.meshPhysics && slot.mesh) {
+          RAPIER_UTILS$1.removeMeshPhysics(slot.meshPhysics);
+          slot.meshPhysics = RAPIER_UTILS$1.addMeshPhysics(slot.mesh, true);
+        }
+      });
+    }
+    (_b = this.model) == null ? void 0 : _b.slots.forEach((slot) => {
+      var _a2, _b2, _c;
+      const rigidBody = (_a2 = slot.meshPhysics) == null ? void 0 : _a2.rigidBody;
+      const translation = (_b2 = slot.mesh) == null ? void 0 : _b2.getWorldPosition(new Vector3());
+      const queaternion = (_c = slot.mesh) == null ? void 0 : _c.getWorldQuaternion(new Quaternion());
+      rigidBody == null ? void 0 : rigidBody.setRotation(queaternion, true);
+      rigidBody == null ? void 0 : rigidBody.setTranslation(translation, true);
+    });
+  }
+  updateSlotPhysicsScale(slot) {
+    if (slot.meshPhysics && slot.mesh) {
+      RAPIER_UTILS$1.removeMeshPhysics(slot.meshPhysics);
+      slot.meshPhysics = RAPIER_UTILS$1.addMeshPhysics(slot.mesh, true);
+    }
+  }
+  setMorphInfluence(index, influence) {
+    var _a;
+    const slots = (_a = this.model) == null ? void 0 : _a.slots;
+    if (slots) {
+      slots.forEach((slot) => {
+        var _a2;
+        if ((_a2 = slot.morphTargets) == null ? void 0 : _a2.find((morphTarget) => morphTarget.index === index)) {
+          slot.mesh.morphTargetInfluences[index] = influence;
+        }
+      });
+    }
+  }
+  animationExist(index) {
+    var _a, _b;
+    return !!((_b = (_a = this.model) == null ? void 0 : _a.animationManager) == null ? void 0 : _b.animations[index]);
+  }
+  getValidBlends(blends) {
+    const validBlends = [];
+    blends.forEach((animationIndex) => {
+      if (this.animationExist(animationIndex)) {
+        validBlends.push(animationIndex);
+      }
+    });
+    return validBlends;
+  }
+  setAnimationsSpeed(speed) {
+    var _a;
+    if ((_a = this.model) == null ? void 0 : _a.animationManager) {
+      this.model.animationManager.animations.forEach((animation) => {
+        animation.action.timeScale = speed;
+      });
+    }
+  }
+  setAnimationWeight(index, weight) {
+    if (this.animationExist(index)) {
+      const action = this.model.animationManager.animations[index].action;
+      action.setEffectiveWeight(weight);
+    }
+  }
+  blendAnimations(blends, weights, percent) {
+    var _a;
+    if ((_a = this.model) == null ? void 0 : _a.animationManager) {
+      const animations = this.model.animationManager.animations;
+      const validBlends = this.getValidBlends(blends);
+      const length = validBlends.length;
+      const blend = percent / 100 * (length - 1);
+      const blendIndex = Math.floor(blend);
+      const blendFrac = blend - blendIndex;
+      validBlends.forEach((animationIndex, index) => {
+        const action = animations[animationIndex].action;
+        let weight = weights[animationIndex];
+        if (index === blendIndex) {
+          weight += 1 - blendFrac;
+        } else if (index === blendIndex + 1) {
+          weight += blendFrac;
+        }
+        action.setEffectiveWeight(weight);
+      });
+      animations.forEach((animation, index) => {
+        if (!validBlends.includes(index))
+          animation.action.setEffectiveWeight(weights[index]);
+      });
+    }
+  }
+  setManualTime(percent) {
+    var _a;
+    if ((_a = this.model) == null ? void 0 : _a.animationManager) {
+      this.model.animationManager.animations.forEach((animation) => {
+        const action = animation.action;
+        const totalDuration = action.getClip().duration;
+        const time = totalDuration * percent / 100;
+        action.time = time;
+      });
+      const mixer = this.model.animationManager.mixer;
+      mixer.update(0);
+    }
+  }
+  tick(autoAnimate, physics, updateScale, deltaTime) {
+    var _a, _b;
+    if (autoAnimate)
+      (_b = (_a = this.model) == null ? void 0 : _a.animationManager) == null ? void 0 : _b.mixer.update(deltaTime);
+    if (physics)
+      this.updateTransformPhysics(updateScale);
+  }
 }
 let A;
 const I = new Array(128).fill(void 0);
@@ -5794,14 +5907,13 @@ var Bg = Object.freeze({ __proto__: null, version: Cg, Vector3: GA, VectorOps: w
 class RapierUtils {
   constructor(scene, world, rapier) {
     this.mesh = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ color: 16777215, vertexColors: true }));
-    this.enabled = true;
     this.world = world;
     this.rapier = rapier;
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
   }
-  updateDebug() {
-    if (this.enabled) {
+  updateDebug(debug) {
+    if (debug) {
       const { vertices, colors } = this.world.debugRender();
       this.mesh.geometry.setAttribute("position", new BufferAttribute(vertices, 3));
       this.mesh.geometry.setAttribute("color", new BufferAttribute(colors, 4));
@@ -5877,12 +5989,24 @@ class RapierUtils {
       this.world.removeCollider(meshPhysics.collider, false);
     }
   }
-  addMeshPhysics(data, fixed) {
-    data.colliderDesc = this.getColliderDesc(data.mesh.geometry);
-    data.rigidBody = this.createRigidBody(fixed, data.mesh.position, data.mesh.quaternion);
-    if (data.colliderDesc) {
-      data.collider = this.createCollider(data.colliderDesc, data.rigidBody);
+  addMeshPhysics(mesh, fixed) {
+    const scaledMeshGeometry = new BufferGeometry();
+    scaledMeshGeometry.copy(mesh.geometry);
+    const scale = new Vector3();
+    mesh.getWorldScale(scale);
+    scaledMeshGeometry.scale(scale.x, scale.y, scale.z);
+    const colliderDesc = this.getColliderDesc(scaledMeshGeometry);
+    const rigidBody = this.createRigidBody(fixed, mesh.position, mesh.quaternion);
+    let collider;
+    if (colliderDesc) {
+      collider = this.createCollider(colliderDesc, rigidBody);
     }
+    const meshPhysics = {
+      colliderDesc,
+      rigidBody,
+      collider
+    };
+    return meshPhysics;
   }
   setRigidBodyRotation(rigidBody, rotation) {
     const quaternion = new Quaternion().setFromEuler(new Euler(rotation.x, rotation.y, rotation.z));
@@ -5918,6 +6042,50 @@ class RapierUtils {
   }
 }
 const labels = {
+  active: {
+    en: "Active",
+    es: "Activas"
+  },
+  animation: {
+    en: "Animation",
+    es: "Animación"
+  },
+  animations: {
+    en: "Animations",
+    es: "Animaciones"
+  },
+  animationsControl: {
+    en: "Control",
+    es: "Control"
+  },
+  animationsPercent: {
+    en: "Percent",
+    es: "Porcentaje"
+  },
+  animationsSpeed: {
+    en: "Speed",
+    es: "Velocidad"
+  },
+  blending: {
+    en: "Blending",
+    es: "Mezca"
+  },
+  blendingPercent: {
+    en: "Percent",
+    es: "Porcentaje"
+  },
+  angularDamping: {
+    en: "Angular Damping",
+    es: "Rebote Angular"
+  },
+  angularInertia: {
+    en: "Angular Inertia",
+    es: "Inercia Angular"
+  },
+  autoAnimate: {
+    en: "Auto Animate",
+    es: "Animación Automática"
+  },
   bounciness: {
     en: "Bounciness",
     es: "Rebote"
@@ -5926,9 +6094,17 @@ const labels = {
     en: "Center of Gravity",
     es: "Centro de Gravedad"
   },
+  customMaterial: {
+    en: "Custom Material",
+    es: "Material Personalizado"
+  },
   debug: {
     en: "Debug",
     es: "Debug"
+  },
+  fixed: {
+    en: "Fixed",
+    es: "Fijas"
   },
   friction: {
     en: "Friction",
@@ -5937,6 +6113,10 @@ const labels = {
   geometry: {
     en: "Geometry",
     es: "Geometría"
+  },
+  influence: {
+    en: "Influence",
+    es: "Influencia"
   },
   linearDamping: {
     en: "Linear Damping",
@@ -5958,6 +6138,26 @@ const labels = {
     en: "Mesh",
     es: "Objeto"
   },
+  morph: {
+    en: "Morph",
+    es: "Estado"
+  },
+  morphIndex: {
+    en: "Morph",
+    es: "Estado"
+  },
+  morphWeight: {
+    en: "Weight",
+    es: "Estado"
+  },
+  morphs: {
+    en: "Morphs",
+    es: "Estados"
+  },
+  origin: {
+    en: "Origin",
+    es: "Origen"
+  },
   physics: {
     en: "Physics",
     es: "Físicas"
@@ -5966,61 +6166,81 @@ const labels = {
     en: "Bouncinness",
     es: "Rebote"
   },
+  shadows: {
+    en: "Shadows",
+    es: "Shadows"
+  },
   size: {
     en: "Size",
     es: "Tamaño"
+  },
+  skeleton: {
+    en: "Show Skeleton",
+    es: "Mostrar Esqueleto"
+  },
+  visible: {
+    en: "Visible",
+    es: "Visible"
+  },
+  weight: {
+    en: "Weight",
+    es: "Peso"
   }
 };
 let RAPIER_UTILS;
 const DEFAULTS = {
-  material: { digoType: "physical", color: 16777215 },
   objectId: "",
-  size: 1,
-  mass: 1,
-  angularInertia: 0.4,
-  angularInertiaMultiplier: 10,
-  linearDamping: 0,
-  angularDamping: 0,
+  customMaterial: false,
+  material: { digoType: "physical", color: 16777215 },
+  visible: true,
+  origin: new Vector3(0, 0, 0),
+  active: true,
   restitution: 0.2,
-  friction: 0.5
+  friction: 0.5,
+  autoAnimate: true,
+  animationsPercent: 0,
+  skeleton: false,
+  blendingPercent: 0,
+  animationsSpeed: 1,
+  blends: [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+  animations: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  morphs: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 };
 class GeneralData extends AssetGeneralData {
-  constructor() {
-    super(...arguments);
-    this.properties = {};
-  }
 }
 class EntityData extends AssetEntityData {
   constructor() {
     super(...arguments);
     this.properties = {
-      material: { digoType: "physical", color: 16777215 },
       objectId: DEFAULTS.objectId,
-      size: DEFAULTS.size,
-      mass: DEFAULTS.mass,
-      angularInertia: DEFAULTS.angularInertia,
-      linearDamping: DEFAULTS.linearDamping,
-      angularDamping: DEFAULTS.angularDamping,
+      customMaterial: DEFAULTS.customMaterial,
+      material: { digoType: "physical", color: 16777215 },
+      visible: DEFAULTS.visible,
+      origin: DEFAULTS.origin,
+      active: DEFAULTS.active,
       restitution: DEFAULTS.restitution,
-      friction: DEFAULTS.friction
+      friction: DEFAULTS.friction,
+      autoAnimate: DEFAULTS.autoAnimate,
+      animationsPercent: DEFAULTS.animationsPercent,
+      skeleton: DEFAULTS.skeleton,
+      blendingPercent: DEFAULTS.blendingPercent,
+      animationsSpeed: DEFAULTS.animationsSpeed,
+      blends: DEFAULTS.blends,
+      animations: DEFAULTS.animations,
+      morphs: DEFAULTS.morphs
     };
-    this.mesh = new Mesh();
-    this.instances = [];
+    this.importedModel = new ImportedModel(RAPIER_UTILS);
+    this.previousScale = new Vector3();
   }
-  setPhysicsProperties(instance) {
-    const collider = instance.physics.collider;
-    collider.setRestitution(this.properties.restitution);
-    collider.setFriction(this.properties.friction);
-    const rigidBody = instance.physics.rigidBody;
-    const geometry = this.mesh.geometry;
-    const mass = this.properties.mass;
-    const angularInertiaValue = this.properties.angularInertia;
-    const angularInertia = new Vector3(angularInertiaValue, angularInertiaValue, angularInertiaValue);
-    const centerOfMass = geometry.boundingBox.getCenter(new Vector3());
-    const angularInertiaLocalFrame = new Bg.Quaternion(0, 0, 0, 1);
-    rigidBody.setAdditionalMassProperties(mass, centerOfMass, angularInertia, angularInertiaLocalFrame, true);
-    rigidBody.setAngularDamping(this.properties.angularDamping);
-    rigidBody.setLinearDamping(this.properties.linearDamping);
+  updateModel(gltf) {
+    this.previousScale.set(0, 0, 0);
+    this.importedModel.setModel(gltf);
+    this.importedModel.blendAnimations(this.properties.blends, this.properties.animations, this.properties.blendingPercent);
+    this.importedModel.setPhysics(this.properties.active);
+    this.importedModel.setVisibility(this.properties.visible);
+    this.importedModel.setCustomMaterial(this.properties.customMaterial);
+    this.importedModel.setorigin(this.properties.origin);
+    this.importedModel.showSkeleton(this.properties.skeleton);
   }
 }
 class Model extends DigoAssetThree {
@@ -6032,8 +6252,7 @@ class Model extends DigoAssetThree {
     const scene = (_a = Helper.getGlobal()) == null ? void 0 : _a.getThreeScene();
     const rapierWorld = (_b = Helper.getGlobal()) == null ? void 0 : _b.getRapierWorld();
     const rapierInstance = (_c = Helper.getGlobal()) == null ? void 0 : _c.getRapierInstance();
-    const rapierUtils = new RapierUtils(scene, rapierWorld, rapierInstance);
-    RAPIER_UTILS = rapierUtils;
+    RAPIER_UTILS = new RapierUtils(scene, rapierWorld, rapierInstance);
     this.setLabels(labels);
     const generalData = new GeneralData();
     generalData.container = new Scene();
@@ -6046,104 +6265,130 @@ class Model extends DigoAssetThree {
   }
   createEntity(id) {
     const entityData = new EntityData();
-    const component = entityData.mesh;
-    entityData.component = component;
+    entityData.component = entityData.importedModel;
     this.addEntity(id, entityData);
-    this.getContainer().add(component);
+    this.getContainer().add(entityData.component);
   }
   addProperties() {
-    this.addGeneralProperties();
     this.addMeshProperties();
     this.addPhysicsProperties();
-  }
-  addGeneralProperties() {
-    this.addPropertyBoolean(GENERAL_PROPERTY, "debug", true).setter((data, value) => {
-      if (RAPIER_UTILS) {
-        RAPIER_UTILS.enabled = value;
-      }
-    }).getter((data) => {
-      return RAPIER_UTILS.enabled ?? false;
+    this.addAnimationsProperties();
+    this.addAnimationsControlProperties();
+    this.addBlendingProperties();
+    this.addMorphsProperties();
+    DEFAULTS.morphs.forEach((_2, index) => {
     });
   }
   addMeshProperties() {
     this.addPropertyObject3D(ENTITY_PROPERTY, "geometry").group("mesh").setter((data, value) => {
       this.updateGeometry(data, value);
     }).getter((data) => data.properties.objectId);
-    this.addPropertyMaterial(ENTITY_PROPERTY, "material", DEFAULTS.material).group("mesh").setter((data, value, property) => this.updateMaterial(data.mesh, data.properties, "material", property, value)).getter((data) => data.properties.material);
+    this.addPropertyBoolean(ENTITY_PROPERTY, "customMaterial", DEFAULTS.customMaterial).group("mesh").setter((data, value) => {
+      data.properties.customMaterial = value;
+      data.importedModel.setCustomMaterial(value);
+    }).getter((data) => data.properties.customMaterial);
+    this.addPropertyMaterial(ENTITY_PROPERTY, "material", DEFAULTS.material).group("mesh").setter((data, value, property) => {
+      this.updateMaterial(data.importedModel, data.properties, "material", property, value);
+    }).getter((data) => data.properties.material);
+    this.addPropertyBoolean(ENTITY_PROPERTY, "visible", DEFAULTS.visible).group("mesh").setter((data, value) => {
+      data.properties.visible = value;
+      data.importedModel.setVisibility(value);
+    }).getter((data) => data.properties.visible);
+    this.addPropertyXYZ(ENTITY_PROPERTY, "origin", true, DEFAULTS.origin.x, DEFAULTS.origin.y, DEFAULTS.origin.z).group("mesh").setter((data, value) => {
+      data.properties.origin = value;
+      data.importedModel.setorigin(value);
+    }).getter((data) => data.properties.origin);
+  }
+  addAnimationsProperties() {
+    DEFAULTS.animations.forEach((_2, index) => {
+      this.addPropertyNumber(ENTITY_PROPERTY, `Animation ${index}`, 0, 1, 2, 0.01, DEFAULTS.animations[index]).group("animations").setter((data, value) => {
+        data.properties.animations[index] = value;
+        data.importedModel.setAnimationWeight(index, value);
+        data.importedModel.blendAnimations(data.properties.blends, data.properties.animations, data.properties.blendingPercent);
+      }).getter((data) => data.properties.animations[index]);
+    });
+  }
+  addMorphsProperties() {
+    DEFAULTS.morphs.forEach((_2, index) => {
+      this.addPropertyNumber(ENTITY_PROPERTY, `Morph ${index}`, 0, 1, 2, 0.01, DEFAULTS.morphs[index]).group("morphs").setter((data, value) => {
+        data.properties.morphs[index] = value;
+        data.importedModel.setMorphInfluence(index, value);
+      }).getter((data) => data.properties.morphs[index]);
+    });
+  }
+  addBlendingProperties() {
+    this.addPropertyNumber(ENTITY_PROPERTY, "blendingPercent", 0, 100, 2, 0.01, DEFAULTS.blendingPercent).group("blending").setter((data, value) => {
+      data.properties.blendingPercent = value;
+      data.importedModel.blendAnimations(data.properties.blends, data.properties.animations, data.properties.blendingPercent);
+    }).getter((data) => data.properties.blendingPercent);
+    DEFAULTS.blends.forEach((_2, index) => {
+      this.addPropertyNumber(ENTITY_PROPERTY, `Blend ${index}`, -1, 9, 0, 1, DEFAULTS.blends[index]).group("blending").setter((data, value) => {
+        data.properties.blends[index] = value;
+        data.importedModel.blendAnimations(data.properties.blends, data.properties.animations, data.properties.blendingPercent);
+      }).getter((data) => data.properties.blends[index]);
+    });
+  }
+  addAnimationsControlProperties() {
+    this.addPropertyNumber(ENTITY_PROPERTY, "animationsSpeed", 0, 10, 2, 0.01, DEFAULTS.animationsSpeed).group("animationsControl").setter((data, value) => {
+      data.properties.animationsSpeed = value;
+      data.importedModel.setAnimationsSpeed(value);
+    }).getter((data) => data.properties.animationsSpeed);
+    this.addPropertyBoolean(ENTITY_PROPERTY, "autoAnimate", DEFAULTS.autoAnimate).group("animationsControl").setter((data, value) => {
+      data.properties.autoAnimate = value;
+      if (!value) {
+        data.importedModel.setManualTime(data.properties.animationsPercent);
+      }
+    }).getter((data) => data.properties.autoAnimate);
+    this.addPropertyNumber(ENTITY_PROPERTY, "animationsPercent", 0, 100, 2, 0.01, DEFAULTS.animationsPercent).group("animationsControl").setter((data, value) => {
+      data.properties.animationsPercent = value;
+      if (!data.properties.autoAnimate) {
+        data.importedModel.setManualTime(value);
+      }
+    }).getter((data) => data.properties.animationsPercent);
+    this.addPropertyBoolean(ENTITY_PROPERTY, "skeleton", DEFAULTS.skeleton).group("animationsControl").setter((data, value) => {
+      data.properties.skeleton = value;
+      data.importedModel.showSkeleton(value);
+    }).getter((data) => data.properties.skeleton);
   }
   addPhysicsProperties() {
-    this.addPropertyNumber(ENTITY_PROPERTY, "size", 0.01, 100, 2, 0.01, DEFAULTS.size).group("physics").setter((data, value) => {
-      data.mesh.geometry.scale(1 / data.properties.size, 1 / data.properties.size, 1 / data.properties.size);
-      data.properties.size = value;
-      data.mesh.geometry.scale(data.properties.size, data.properties.size, data.properties.size);
-      data.mesh.geometry.computeVertexNormals();
-      data.mesh.geometry.computeBoundingSphere();
-      data.mesh.geometry.computeTangents();
-      data.mesh.geometry.computeBoundingBox();
-    }).getter((data) => data.properties.size);
-    this.addPropertyNumber(ENTITY_PROPERTY, "mass", 0, 100, 2, 0.01, DEFAULTS.mass).group("physics").setter((data, value) => {
-      data.properties.mass = value;
-    }).getter((data) => data.properties.mass);
-    this.addPropertyNumber(ENTITY_PROPERTY, "angularInertia", 0, 2, 2, 0.01, DEFAULTS.angularInertia).group("physics").setter((data, value) => {
-      data.properties.angularInertia = value / DEFAULTS.angularInertiaMultiplier;
-    }).getter((data) => data.properties.angularInertia * DEFAULTS.angularInertiaMultiplier);
-    this.addPropertyNumber(ENTITY_PROPERTY, "linearDamping", 0, 100, 2, 0.01, DEFAULTS.linearDamping).group("physics").setter((data, value) => {
-      data.properties.linearDamping = value;
-    }).getter((data) => data.properties.linearDamping);
-    this.addPropertyNumber(ENTITY_PROPERTY, "angularDamping", 0, 100, 2, 0.01, DEFAULTS.angularDamping).group("physics").setter((data, value) => {
-      data.properties.angularDamping = value;
-    }).getter((data) => data.properties.angularDamping);
+    this.addPropertyBoolean(ENTITY_PROPERTY, "active", DEFAULTS.active).group("physics").setter((data, value) => {
+      data.properties.active = value;
+      data.importedModel.setPhysics(value);
+    }).getter((data) => data.properties.active);
     this.addPropertyNumber(ENTITY_PROPERTY, "friction", 0, 10, 2, 0.01, DEFAULTS.friction).group("physics").setter((data, value) => {
       data.properties.friction = value;
+      data.importedModel.setPhysicsFriction(value);
     }).getter((data) => data.properties.friction);
     this.addPropertyNumber(ENTITY_PROPERTY, "restitution", 0, 10, 2, 0.01, DEFAULTS.restitution).group("physics").setter((data, value) => {
       data.properties.restitution = value;
+      data.importedModel.setPhysicsRestitution(value);
     }).getter((data) => data.properties.restitution);
   }
   updateGeometry(data, id) {
     this.loadGLTF(id, (gltf) => {
-      const geometries = [];
-      gltf.scene.traverse((node) => {
-        if (node instanceof Mesh) {
-          const mesh = node;
-          geometries.push(mesh.geometry);
-        }
-      });
-      const mergedGeometry = mergeGeometries(geometries);
-      mergedGeometry.computeVertexNormals();
-      mergedGeometry.computeBoundingSphere();
-      mergedGeometry.computeTangents();
-      mergedGeometry.computeBoundingBox();
-      const size = mergedGeometry.boundingBox.getSize(new Vector3());
-      const scaleFactor = 1 / Math.max(size.x, size.y, size.z) / 10;
-      const scaleMatrix = new Matrix4().makeScale(scaleFactor, scaleFactor, scaleFactor);
-      mergedGeometry.applyMatrix4(scaleMatrix);
-      mergedGeometry.scale(data.properties.size, data.properties.size, data.properties.size);
-      data.mesh.geometry = mergedGeometry;
+      data.updateModel(gltf);
     });
     data.properties.objectId = id;
   }
   tick(parameters) {
     this.deltaTime = parameters.elapsedTime - this.previousTime;
     this.previousTime = parameters.elapsedTime;
-    this.getEntities().forEach(
-      (entityName) => {
-        const entityData = this.getEntity(entityName);
-        entityData.instances;
-        entityData.properties;
-      }
-    );
+    this.getEntities().forEach((entityName) => {
+      const entityData = this.getEntity(entityName);
+      const autoAnimate = entityData.properties.autoAnimate;
+      const scale = entityData.importedModel.scale;
+      const updateScale = !scale.equals(entityData.previousScale);
+      entityData.previousScale.set(scale.x, scale.y, scale.z);
+      entityData.importedModel.tick(autoAnimate, entityData.properties.active, updateScale, this.deltaTime);
+    });
     super.tick(parameters);
-    if (RAPIER_UTILS) {
-      RAPIER_UTILS.updateDebug();
-    }
   }
 }
 const digoAssetData = {
   info: {
     name: {
-      en: "Imported Model",
-      es: "Modelo Importado"
+      en: "Model",
+      es: "Modelo"
     },
     category: "objects",
     icon: "ViewInAr",
